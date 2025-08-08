@@ -34,12 +34,12 @@
 ### 运行模式
 
 - **系统服务模式（默认）**：直接执行可执行文件会尝试在 Windows 中安装为系统服务，并在后台运行。该模式适合长期驻留使用。
-- **CLI 模式**：通过 `--mode cli` 参数以前台方式运行程序，可手动指定 MQTT 参数以便调试。
+- **CLI 模式**：通过 `--mode cli` 参数以前台方式运行程序，仍从配置文件读取 MQTT 参数，适合调试。
 
 
 ### 配置文件
 
-程序默认从 `%APPDATA%\\auto_screen_switch\\config.toml` 读取 MQTT 连接信息，其中包含 Broker 的 IP、端口以及可选的用户名和密码。例如：
+程序默认从可执行文件所在目录的 `config.toml` 读取 MQTT 连接信息，其中包含 Broker 的 IP、端口以及可选的用户名和密码。例如：
 
 ```toml
 broker_ip = "192.168.1.10"
@@ -48,12 +48,12 @@ username = "user"
 password = "pass"
 ```
 
-上述参数也可以在 CLI 模式下通过 `--broker`、`--port`、`--username`、`--password` 等选项手动指定。
+无论以系统服务模式还是 CLI 模式运行，程序都会从配置文件读取上述参数。目前命令行仅支持通过 `--mode cli` 选择前台运行模式。
 
 示例命令：
 
 ```powershell
-auto_screen_switch.exe --mode cli --broker <broker_address> --topic pi5/display
+auto_screen_switch.exe --mode cli
 ```
 
 ### 调试建议
