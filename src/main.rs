@@ -305,8 +305,8 @@ fn run_service() -> windows_service::Result<()> {
     // 创建 Tokio 运行时并运行主逻辑
     let rt = Runtime::new().unwrap();
     
-    // 设置服务停止超时
-    let stop_timeout = Duration::from_secs(30);
+    // 设置服务停止超时（增加超时时间）
+    let stop_timeout = Duration::from_secs(300); // 5分钟超时
     let shutdown_future = run(Some(shutdown_rx));
     
     // 使用超时机制运行服务
@@ -358,17 +358,32 @@ async fn run(mut shutdown: Option<oneshot::Receiver<()>>) {
         let connect_msg = format!("正在连接到 MQTT Broker: {}:{}", cfg.broker_ip, cfg.broker_port);
         log_info(&connect_msg);
         println!("🔄 {}", connect_msg);
+        
+        // 检查网络连接
+        log_info("检查网络连接...");
+        println!("🌐 检查网络连接...");
 
         // 配置 MQTT 连接选项
         let mut options = MqttOptions::new("auto_screen_switch", cfg.broker_ip.clone(), cfg.broker_port);
         
+        // 设置保活时间
+        options.set_keep_alive(Duration::from_secs(30));
+        
         // 如果配置了用户名和密码，则设置认证信息
         if let (Some(u), Some(p)) = (cfg.username.clone(), cfg.password.clone()) {
             options.set_credentials(u, p);
+            log_info("使用认证信息连接 MQTT");
+            println!("🔐 使用认证信息连接 MQTT");
+        } else {
+            log_info("使用匿名连接 MQTT");
+            println!("🔓 使用匿名连接 MQTT");
         }
 
         // 创建 MQTT 客户端和事件循环
         let (client, mut eventloop) = AsyncClient::new(options, 10);
+        
+        log_info("MQTT 客户端创建成功，开始连接...");
+        println!("🔌 MQTT 客户端创建成功，开始连接...");
         
         // 订阅屏幕控制主题
         match client.subscribe("pi5/display", QoS::AtMostOnce).await {
@@ -512,6 +527,11 @@ async fn run(mut shutdown: Option<oneshot::Receiver<()>>) {
             let error_msg = format!("达到最大重试次数 ({}), 程序退出", MAX_RETRIES);
             log_error(&error_msg);
             eprintln!("❌ {}", error_msg);
+            eprintln!("💡 请检查以下项目：");
+            eprintln!("   1. MQTT Broker (如 Mosquitto) 是否已启动");
+            eprintln!("   2. 端口 {} 是否可访问", cfg.broker_port);
+            eprintln!("   3. 防火墙是否阻止了连接");
+            eprintln!("   4. config.toml 中的 broker_ip 是否正确");
             break;
         }
         
