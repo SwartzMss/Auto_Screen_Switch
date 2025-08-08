@@ -28,3 +28,36 @@
    观察屏幕是否根据指令点亮或关闭。
 
 项目当前仍在起步阶段，欢迎提出建议或提交 PR。
+
+## 安装与调试
+
+### 运行模式
+
+- **系统服务模式（默认）**：直接执行可执行文件会尝试在 Windows 中安装为系统服务，并在后台运行。该模式适合长期驻留使用。
+- **CLI 模式**：通过 `--mode cli` 参数以前台方式运行程序，可手动指定 MQTT 参数以便调试。
+
+
+### 配置文件
+
+程序默认从 `%APPDATA%\\auto_screen_switch\\config.toml` 读取 MQTT 连接信息，其中包含 Broker 的 IP、端口以及可选的用户名和密码。例如：
+
+```toml
+broker_ip = "192.168.1.10"
+broker_port = 1883
+username = "user"
+password = "pass"
+```
+
+上述参数也可以在 CLI 模式下通过 `--broker`、`--port`、`--username`、`--password` 等选项手动指定。
+
+示例命令：
+
+```powershell
+auto_screen_switch.exe --mode cli --broker <broker_address> --topic pi5/display
+```
+
+### 调试建议
+
+- 在 CLI 模式下可以直接观察终端输出，检查是否成功连接到 MQTT Broker。
+- 如需查看更多日志，可按需设置诸如 `RUST_LOG=debug` 的环境变量（预期功能）。
+- 若服务模式运行异常，可使用 `auto_screen_switch.exe --uninstall` 移除服务后重新安装（预期功能）。
