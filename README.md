@@ -56,8 +56,20 @@ password = "pass"
 auto_screen_switch.exe --mode cli
 ```
 
+### 服务安装与卸载
+
+在 Windows 中注册或移除系统服务，可使用以下命令：
+
+```powershell
+# 安装服务
+auto_screen_switch.exe --install
+
+# 卸载服务
+auto_screen_switch.exe --uninstall
+```
+
 ### 调试建议
 
 - 在 CLI 模式下可以直接观察终端输出，检查是否成功连接到 MQTT Broker。
 - 如需查看更多日志，可按需设置诸如 `RUST_LOG=debug` 的环境变量（预期功能）。
-- 若服务模式运行异常，可使用 `auto_screen_switch.exe --uninstall` 移除服务后重新安装（预期功能）。
+- 若服务模式运行异常，可先执行 `auto_screen_switch.exe --uninstall` 移除服务，再运行 `auto_screen_switch.exe --install` 重新安装（预期功能）。
