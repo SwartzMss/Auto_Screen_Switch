@@ -20,4 +20,11 @@
    ```
 4. 在 Windows 上运行程序并设置 MQTT 连接参数等配置（待实现）。
 
+5. 测试：在 Windows 上使用 MQTT 客户端手动发布消息验证效果，例如使用 `mosquitto_pub`：
+   ```powershell
+   mosquitto_pub -h <broker_address> -t pi5/display -m on
+   mosquitto_pub -h <broker_address> -t pi5/display -m off
+   ```
+   观察屏幕是否根据指令点亮或关闭。
+
 项目当前仍在起步阶段，欢迎提出建议或提交 PR。
