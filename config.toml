@@ -1,14 +1,11 @@
-# MQTT Broker 配置
-# 请根据你的实际 MQTT Broker 信息修改以下配置
-
 # MQTT Broker 的 IP 地址
 broker_ip = "localhost"
 
 # MQTT Broker 的端口号（通常为 1883）
 broker_port = 1883
 
-# MQTT 用户名（可选，如果 Broker 不需要认证可以删除此行）
+# MQTT 用户名（可选，如果不需要认证请注释掉）
 # username = "your_username"
 
-# MQTT 密码（可选，如果 Broker 不需要认证可以删除此行）
+# MQTT 密码（可选，如果不需要认证请注释掉）
 # password = "your_password"

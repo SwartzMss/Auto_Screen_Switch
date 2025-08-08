@@ -1,7 +1,17 @@
 @echo off
+chcp 65001 >nul
 REM ========================================
 REM Auto Screen Switch 服务卸载脚本
 REM ========================================
+
+REM 检查管理员权限
+net session >nul 2>&1
+if errorlevel 1 (
+    echo 错误：需要管理员权限才能卸载服务
+    echo 请右键点击此脚本，选择"以管理员身份运行"
+    pause
+    exit /b 1
+)
 
 REM 设置服务名称
 set SERVICE_NAME=AutoScreenSwitch

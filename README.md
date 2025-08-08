@@ -9,6 +9,7 @@
 - ✅ 采用 Rust 实现，可作为 Windows 后台服务运行
 - ✅ 支持 CLI 模式调试
 - ✅ 完善的错误处理和日志输出
+- ✅ 详细的日志文件记录
 - ✅ 优雅的服务启动和关闭
 
 ## 项目结构
@@ -182,21 +183,27 @@ sc delete AutoScreenSwitch
 
 ### 调试技巧
 
-1. **启用详细日志**：
-   ```powershell
-   # 设置环境变量（如果支持）
-   set RUST_LOG=debug
-   auto_screen_switch.exe --mode cli
+1. **查看日志文件**：
+   ```cmd
+   # 日志文件位置（与可执行文件同目录）
+   auto_screen_switch.log
+   
+   # 实时查看日志
+   type auto_screen_switch.log
+   
+   # 查看最后几行日志
+   tail -n 20 auto_screen_switch.log
    ```
 
 2. **检查服务状态**：
-   ```powershell
+   ```cmd
    sc query AutoScreenSwitch
    ```
 
 3. **查看服务日志**：
    - 打开 Windows 事件查看器
    - 查看应用程序日志
+   - 或直接查看 auto_screen_switch.log 文件
 
 ## 代码说明
 
