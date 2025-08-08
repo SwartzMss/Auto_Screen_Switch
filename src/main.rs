@@ -137,13 +137,11 @@ fn log_warn(message: &str) {
 fn load_config() -> Config {
     // 获取可执行文件所在目录
     log_info("开始加载配置文件");
-    println!("📋 开始加载配置文件");
     
     let exe_path = match std::env::current_exe() {
         Ok(path) => {
             let path_msg = format!("获取可执行文件路径成功: {:?}", path);
             log_info(&path_msg);
-            println!("✅ {}", path_msg);
             path
         },
         Err(e) => {
@@ -157,17 +155,14 @@ fn load_config() -> Config {
     
     let file_msg = format!("配置文件路径: {:?}", config_file);
     log_info(&file_msg);
-    println!("📁 {}", file_msg);
     
     // 读取配置文件
     log_info("正在读取配置文件内容");
-    println!("📖 正在读取配置文件内容");
     
     let content = match fs::read_to_string(&config_file) {
         Ok(content) => {
             let success_msg = format!("配置文件读取成功 (大小: {} 字节)", content.len());
             log_info(&success_msg);
-            println!("✅ {}", success_msg);
             content
         },
         Err(e) => {
@@ -179,12 +174,10 @@ fn load_config() -> Config {
     
     // 解析 TOML 格式的配置
     log_info("正在解析配置文件格式 (TOML)");
-    println!("🔧 正在解析配置文件格式 (TOML)");
     
     let config: Config = match toml::from_str(&content) {
         Ok(config) => {
             log_info("配置文件格式解析成功");
-            println!("✅ 配置文件格式解析成功");
             config
         },
         Err(e) => {
@@ -196,7 +189,6 @@ fn load_config() -> Config {
     
     // 验证配置的合理性
     log_info("正在验证配置参数");
-    println!("🔍 正在验证配置参数");
     
     if config.broker_ip.is_empty() {
         let error_msg = "MQTT Broker IP 地址不能为空";
@@ -210,18 +202,14 @@ fn load_config() -> Config {
     }
     
     log_info("配置参数验证通过");
-    println!("✅ 配置参数验证通过");
     
     let info_msg = format!("📋 配置加载完成 - Broker: {}:{}", config.broker_ip, config.broker_port);
     log_info(&info_msg);
-    println!("✅ {}", info_msg);
     
     if config.username.is_some() {
         log_info("🔐 认证: 已配置用户名和密码");
-        println!("   🔐 认证: 已配置用户名和密码");
     } else {
         log_info("🔓 认证: 未配置 (匿名连接)");
-        println!("   🔓 认证: 未配置 (匿名连接)");
     }
     
     config
@@ -264,13 +252,11 @@ fn run_service() -> windows_service::Result<()> {
         match control_event {
             ServiceControl::Stop => {
                 log_info("收到服务停止命令");
-                println!("🛑 收到服务停止命令");
                 // 收到停止信号时，发送关闭信号
                 if let Some(tx) = tx.lock().unwrap().take() {
                     match tx.send(()) {
                         Ok(_) => {
                             log_info("已发送关闭信号");
-                            println!("✅ 已发送关闭信号");
                         }
                         Err(e) => {
                             let error_msg = format!("发送关闭信号失败: {:?}", e);
@@ -279,7 +265,6 @@ fn run_service() -> windows_service::Result<()> {
                     }
                 } else {
                     log_warn("关闭信号通道已关闭");
-                    println!("⚠️  关闭信号通道已关闭");
                 }
                 ServiceControlHandlerResult::NoError
             }
@@ -336,11 +321,9 @@ fn run_service() -> windows_service::Result<()> {
     })) {
         Ok(Ok(_)) => {
             log_info("服务正常停止");
-            println!("✅ 服务正常停止");
         }
         Ok(Err(_)) => {
             log_warn("服务停止超时，强制退出");
-            println!("⚠️  服务停止超时，强制退出");
         }
         Err(panic_info) => {
             let error_msg = if let Some(s) = panic_info.downcast_ref::<&str>() {
@@ -394,11 +377,9 @@ async fn run(mut shutdown: oneshot::Receiver<()>) {
     loop {
         let connect_msg = format!("正在连接到 MQTT Broker: {}:{}", cfg.broker_ip, cfg.broker_port);
         log_info(&connect_msg);
-        println!("🔄 {}", connect_msg);
         
         // 检查网络连接
         log_info("检查网络连接...");
-        println!("🌐 检查网络连接...");
 
         // 配置 MQTT 连接选项
         let mut options = MqttOptions::new("auto_screen_switch", cfg.broker_ip.clone(), cfg.broker_port);
@@ -410,35 +391,28 @@ async fn run(mut shutdown: oneshot::Receiver<()>) {
         if let (Some(u), Some(p)) = (cfg.username.clone(), cfg.password.clone()) {
             options.set_credentials(u, p);
             log_info("使用认证信息连接 MQTT");
-            println!("🔐 使用认证信息连接 MQTT");
         } else {
             log_info("使用匿名连接 MQTT");
-            println!("🔓 使用匿名连接 MQTT");
         }
 
         // 创建 MQTT 客户端和事件循环
         let (client, mut eventloop) = AsyncClient::new(options, 10);
         
         log_info("MQTT 客户端创建成功，开始连接...");
-        println!("🔌 MQTT 客户端创建成功，开始连接...");
         
         // 订阅屏幕控制主题
         log_info("正在订阅 MQTT 主题: pi5/display");
-        println!("📡 正在订阅 MQTT 主题: pi5/display");
         
         match client.subscribe("pi5/display", QoS::AtMostOnce).await {
             Ok(_) => {
                 log_info("✅ 主题订阅成功: pi5/display");
-                println!("✅ 主题订阅成功: pi5/display");
                 
                 // 添加连接验证
                 log_info("正在发送连接测试消息");
-                println!("🔍 正在发送连接测试消息");
                 match client.publish("test/connection", QoS::AtMostOnce, false, b"ping").await {
                     Ok(_) => {
                         log_info("✅ 连接测试成功 - MQTT Broker 运行正常");
-                        println!("✅ 连接测试成功 - MQTT Broker 运行正常");
-                        println!("📡 系统准备就绪，等待控制指令...");
+                        log_info("📡 系统准备就绪，等待控制指令...");
                         retry_count = 0; // 重置重试计数
                     }
                     Err(e) => {
@@ -452,7 +426,6 @@ async fn run(mut shutdown: oneshot::Receiver<()>) {
                         }
                         let retry_msg = format!("{} 秒后重试... ({}/{})", RETRY_DELAY.as_secs(), retry_count, MAX_RETRIES);
                         log_info(&retry_msg);
-                        println!("⏳ {}", retry_msg);
                         tokio::time::sleep(RETRY_DELAY).await;
                         continue;
                     }
@@ -469,7 +442,6 @@ async fn run(mut shutdown: oneshot::Receiver<()>) {
                 }
                 let retry_msg = format!("{} 秒后重试... ({}/{})", RETRY_DELAY.as_secs(), retry_count, MAX_RETRIES);
                 log_info(&retry_msg);
-                println!("⏳ {}", retry_msg);
                 tokio::time::sleep(RETRY_DELAY).await;
                 continue;
             }
@@ -481,7 +453,6 @@ async fn run(mut shutdown: oneshot::Receiver<()>) {
                 // 处理关闭信号
                 _ = &mut shutdown => {
                     log_info("收到关闭信号，正在停止服务...");
-                    println!("🛑 收到关闭信号，正在停止服务...");
                     return;
                 }
                 // 处理 MQTT 事件，添加更短的超时
@@ -491,28 +462,22 @@ async fn run(mut shutdown: oneshot::Receiver<()>) {
                         let payload_str = String::from_utf8_lossy(&p.payload);
                         let cmd_msg = format!("📨 收到控制指令: '{}'", payload_str);
                         log_info(&cmd_msg);
-                        println!("{}", cmd_msg);
                         
                         match p.payload.as_ref() {
                             b"on" => {
                                 log_info("执行操作: 开启屏幕");
-                                println!("📺 执行操作: 开启屏幕");
                                 screen::set_display(true);
                                 log_info("✅ 屏幕开启操作完成");
-                                println!("✅ 屏幕开启操作完成");
                             }
                             b"off" => {
                                 log_info("执行操作: 关闭屏幕");
-                                println!("📺 执行操作: 关闭屏幕");
                                 screen::set_display(false);
                                 log_info("✅ 屏幕关闭操作完成");
-                                println!("✅ 屏幕关闭操作完成");
                             }
                             _ => {
                                 let unknown_msg = format!("❌ 收到未知指令: '{}'", payload_str);
                                 log_warn(&unknown_msg);
-                                println!("⚠️  {}", unknown_msg);
-                                println!("💡 支持的指令: 'on' (开启屏幕), 'off' (关闭屏幕)");
+                                log_info("💡 支持的指令: 'on' (开启屏幕), 'off' (关闭屏幕)");
                             }
                         }
                     }
@@ -540,7 +505,6 @@ async fn run(mut shutdown: oneshot::Receiver<()>) {
         
         let retry_msg = format!("{} 秒后重试连接... ({}/{})", RETRY_DELAY.as_secs(), retry_count, MAX_RETRIES);
         log_info(&retry_msg);
-        println!("⏳ {}", retry_msg);
         tokio::time::sleep(RETRY_DELAY).await;
     }
 }
@@ -551,12 +515,7 @@ async fn run(mut shutdown: oneshot::Receiver<()>) {
 /// 返回程序执行结果
 fn main() -> windows_service::Result<()> {
     // 服务模式：启动 Windows 服务
-    println!("🚀 自动屏幕开关程序启动");
-    println!("🔧 运行模式: Windows 服务模式");
-    println!("📍 程序版本: {}", env!("CARGO_PKG_VERSION"));
-    println!("🔗 GitHub: https://github.com/your-repo/auto-screen-switch");
-    println!("📖 正在启动 Windows 服务...");
-    println!("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+    // 程序启动信息已通过日志系统记录
     
     service_dispatcher::start(SERVICE_NAME, ffi_service_main)
 }

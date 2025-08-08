@@ -32,12 +32,7 @@ pub fn set_display(on: bool) {
             LPARAM(state),
         );
         
-        // 记录操作结果（可选，用于调试）
-        if on {
-            println!("已发送开启屏幕指令");
-        } else {
-            println!("已发送关闭屏幕指令");
-        }
+        // 操作结果已在调用方记录日志
         
         // 注意：SendMessageW 的返回值在此上下文中通常不需要检查
         // 因为显示器电源控制是一个广播消息，没有特定的返回值含义
