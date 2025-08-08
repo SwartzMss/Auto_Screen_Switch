@@ -33,7 +33,7 @@
 
 ### 运行模式
 
-- **系统服务模式（默认）**：直接执行可执行文件会尝试在 Windows 中安装为系统服务，并在后台运行。该模式适合长期驻留使用。
+- **系统服务模式（默认）**：编译后的程序通过 `sc.exe` 注册为 Windows 服务后，可随系统启动并在后台运行。
 - **CLI 模式**：通过 `--mode cli` 参数以前台方式运行程序，仍从配置文件读取 MQTT 参数，适合调试。
 
 
@@ -58,18 +58,17 @@ auto_screen_switch.exe --mode cli
 
 ### 服务安装与卸载
 
-在 Windows 中注册或移除系统服务，可使用以下命令：
+仓库提供了 `install.bat` 和 `uninstall.bat`，可在 Windows（需管理员权限）下简化服务的注册和移除：
 
-```powershell
-# 安装服务
-auto_screen_switch.exe --install
-
-# 卸载服务
-auto_screen_switch.exe --uninstall
+```bat
+install.bat   :: 创建并启动服务
+uninstall.bat :: 停止并删除服务
 ```
+
+脚本假设可执行文件 `auto_screen_switch.exe` 位于与脚本同一目录，内部使用 `sc.exe` 完成服务管理。其中服务名称 `AutoScreenSwitch` 必须与代码中的 `SERVICE_NAME` 常量保持一致。
 
 ### 调试建议
 
 - 在 CLI 模式下可以直接观察终端输出，检查是否成功连接到 MQTT Broker。
 - 如需查看更多日志，可按需设置诸如 `RUST_LOG=debug` 的环境变量（预期功能）。
-- 若服务模式运行异常，可先执行 `auto_screen_switch.exe --uninstall` 移除服务，再运行 `auto_screen_switch.exe --install` 重新安装（预期功能）。
+- 若服务模式运行异常，可使用 `sc stop AutoScreenSwitch` 停止服务，必要时 `sc delete AutoScreenSwitch` 后重新安装。
