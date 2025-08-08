@@ -12,24 +12,21 @@ jobs:
   build:
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v3
-      - uses: actions-rs/toolchain@v1
-        with:
-          toolchain: stable
-          profile: minimal
-          override: true
+      - uses: actions/checkout@v4
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
       - name: Build release binary
         run: cargo build --verbose --release
       - name: Package binary
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force dist
-          Copy-Item target/release/EasyProxy.exe dist/
-          Compress-Archive -Path dist/EasyProxy.exe -DestinationPath release.zip
+          Copy-Item target/release/auto_screen_switch.exe dist/
+          Compress-Archive -Path dist/auto_screen_switch.exe -DestinationPath release.zip
       - name: Upload Release
         uses: actions/upload-artifact@v4
         with:
-          name: EasyProxy
+          name: AutoScreenSwitch
           path: release.zip
           retention-days: 30
       - name: Get existing Release upload URL
