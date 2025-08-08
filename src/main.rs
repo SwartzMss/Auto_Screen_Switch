@@ -1,4 +1,4 @@
-use clap::Parser;
+
 use rumqttc::{AsyncClient, Event, Incoming, MqttOptions, QoS};
 use serde::Deserialize;
 use std::ffi::OsString;
@@ -18,14 +18,7 @@ use windows_service::{
 
 mod screen;
 
-/// 命令行参数结构体
-#[derive(Parser, Debug)]
-#[command(author, version, about, long_about = None)]
-struct Args {
-    /// 运行模式：`service`（服务模式）或 `cli`（命令行模式）
-    #[arg(long, default_value = "service")]
-    mode: String,
-}
+
 
 /// MQTT 配置结构体，从 `config.toml` 文件加载
 #[derive(Debug, Deserialize)]
@@ -143,66 +136,92 @@ fn log_warn(message: &str) {
 /// 如果配置文件不存在或格式错误，程序会 panic
 fn load_config() -> Config {
     // 获取可执行文件所在目录
+    log_info("开始加载配置文件");
+    println!("📋 开始加载配置文件");
+    
     let exe_path = match std::env::current_exe() {
-        Ok(path) => path,
+        Ok(path) => {
+            let path_msg = format!("获取可执行文件路径成功: {:?}", path);
+            log_info(&path_msg);
+            println!("✅ {}", path_msg);
+            path
+        },
         Err(e) => {
             let error_msg = format!("无法获取可执行文件路径: {}", e);
             log_error(&error_msg);
-            eprintln!("❌ {}", error_msg);
             panic!("无法获取可执行文件路径");
         }
     };
     let config_dir = exe_path.parent().unwrap_or(Path::new("."));
     let config_file = config_dir.join("config.toml");
     
+    let file_msg = format!("配置文件路径: {:?}", config_file);
+    log_info(&file_msg);
+    println!("📁 {}", file_msg);
+    
     // 读取配置文件
+    log_info("正在读取配置文件内容");
+    println!("📖 正在读取配置文件内容");
+    
     let content = match fs::read_to_string(&config_file) {
-        Ok(content) => content,
+        Ok(content) => {
+            let success_msg = format!("配置文件读取成功 (大小: {} 字节)", content.len());
+            log_info(&success_msg);
+            println!("✅ {}", success_msg);
+            content
+        },
         Err(e) => {
             let error_msg = format!("无法读取 config.toml 文件: {} (路径: {:?})", e, config_file);
             log_error(&error_msg);
-            eprintln!("❌ {}", error_msg);
-            eprintln!("请确保 config.toml 文件存在于程序目录中");
             panic!("无法读取 config.toml 文件");
         }
     };
     
     // 解析 TOML 格式的配置
+    log_info("正在解析配置文件格式 (TOML)");
+    println!("🔧 正在解析配置文件格式 (TOML)");
+    
     let config: Config = match toml::from_str(&content) {
-        Ok(config) => config,
+        Ok(config) => {
+            log_info("配置文件格式解析成功");
+            println!("✅ 配置文件格式解析成功");
+            config
+        },
         Err(e) => {
             let error_msg = format!("config.toml 文件格式错误: {}", e);
             log_error(&error_msg);
-            eprintln!("❌ {}", error_msg);
-            eprintln!("请检查 config.toml 文件的语法");
             panic!("config.toml 文件格式错误");
         }
     };
     
     // 验证配置的合理性
+    log_info("正在验证配置参数");
+    println!("🔍 正在验证配置参数");
+    
     if config.broker_ip.is_empty() {
         let error_msg = "MQTT Broker IP 地址不能为空";
         log_error(error_msg);
-        eprintln!("❌ 配置错误: {}", error_msg);
         panic!("MQTT Broker IP 地址不能为空");
     }
     if config.broker_port == 0 {
         let error_msg = "MQTT Broker 端口号不能为 0";
         log_error(error_msg);
-        eprintln!("❌ 配置错误: {}", error_msg);
         panic!("MQTT Broker 端口号不能为 0");
     }
     
-    let info_msg = format!("配置文件加载成功 - Broker: {}:{}", config.broker_ip, config.broker_port);
+    log_info("配置参数验证通过");
+    println!("✅ 配置参数验证通过");
+    
+    let info_msg = format!("📋 配置加载完成 - Broker: {}:{}", config.broker_ip, config.broker_port);
     log_info(&info_msg);
     println!("✅ {}", info_msg);
     
     if config.username.is_some() {
-        log_info("认证: 已配置用户名和密码");
-        println!("   认证: 已配置用户名和密码");
+        log_info("🔐 认证: 已配置用户名和密码");
+        println!("   🔐 认证: 已配置用户名和密码");
     } else {
-        log_info("认证: 未配置");
-        println!("   认证: 未配置");
+        log_info("🔓 认证: 未配置 (匿名连接)");
+        println!("   🔓 认证: 未配置 (匿名连接)");
     }
     
     config
@@ -221,7 +240,6 @@ fn my_service_main(_arguments: Vec<OsString>) {
     if let Err(e) = run_service() {
         let error_msg = format!("服务运行错误: {:?}", e);
         log_error(&error_msg);
-        eprintln!("❌ {}", error_msg);
     }
 }
 
@@ -232,7 +250,6 @@ fn my_service_main(_arguments: Vec<OsString>) {
 fn run_service() -> windows_service::Result<()> {
     // 初始化日志记录器
     if let Err(e) = init_logger() {
-        eprintln!("❌ 初始化日志记录器失败: {}", e);
         return Err(windows_service::Error::Winapi(e));
     }
     
@@ -258,7 +275,6 @@ fn run_service() -> windows_service::Result<()> {
                         Err(e) => {
                             let error_msg = format!("发送关闭信号失败: {:?}", e);
                             log_error(&error_msg);
-                            eprintln!("❌ {}", error_msg);
                         }
                     }
                 } else {
@@ -303,21 +319,38 @@ fn run_service() -> windows_service::Result<()> {
     log_info("服务状态设置为运行中");
 
     // 创建 Tokio 运行时并运行主逻辑
+    log_info("正在创建 Tokio 运行时");
     let rt = Runtime::new().unwrap();
+    log_info("Tokio 运行时创建成功");
     
     // 设置服务停止超时（增加超时时间）
     let stop_timeout = Duration::from_secs(300); // 5分钟超时
-    let shutdown_future = run(Some(shutdown_rx));
+    log_info("准备启动主逻辑");
     
     // 使用超时机制运行服务
-    match rt.block_on(tokio::time::timeout(stop_timeout, shutdown_future)) {
-        Ok(_) => {
+    match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        rt.block_on(async {
+            log_info("开始执行主逻辑");
+            tokio::time::timeout(stop_timeout, run(shutdown_rx)).await
+        })
+    })) {
+        Ok(Ok(_)) => {
             log_info("服务正常停止");
             println!("✅ 服务正常停止");
         }
-        Err(_) => {
+        Ok(Err(_)) => {
             log_warn("服务停止超时，强制退出");
             println!("⚠️  服务停止超时，强制退出");
+        }
+        Err(panic_info) => {
+            let error_msg = if let Some(s) = panic_info.downcast_ref::<&str>() {
+                format!("服务运行时发生panic: {}", s)
+            } else if let Some(s) = panic_info.downcast_ref::<String>() {
+                format!("服务运行时发生panic: {}", s)
+            } else {
+                "服务运行时发生未知panic".to_string()
+            };
+            log_error(&error_msg);
         }
     }
 
@@ -339,17 +372,21 @@ fn run_service() -> windows_service::Result<()> {
 /// 主要的 MQTT 监听和屏幕控制逻辑
 /// 
 /// # Arguments
-/// * `shutdown` - 可选的关闭信号接收器，用于优雅关闭
-async fn run(mut shutdown: Option<oneshot::Receiver<()>>) {
-    // 初始化日志记录器（如果不是服务模式）
-    if shutdown.is_none() {
-        if let Err(e) = init_logger() {
-            eprintln!("❌ 初始化日志记录器失败: {}", e);
-            return;
+/// * `shutdown` - 关闭信号接收器，用于优雅关闭
+async fn run(mut shutdown: oneshot::Receiver<()>) {
+    // 记录函数开始执行（使用安全的日志记录）
+    if let Ok(mut logger) = LOGGER.lock() {
+        if let Some(ref mut l) = *logger {
+            l.info("开始执行 run() 函数");
         }
     }
     
+    // 服务模式 - 日志记录器已在服务启动时初始化
+    log_info("服务模式 - 跳过日志记录器初始化");
+    
+    log_info("准备加载配置文件");
     let cfg = load_config();
+    log_info("配置文件加载完成");
     let mut retry_count = 0;
     const MAX_RETRIES: u32 = 5;
     const RETRY_DELAY: Duration = Duration::from_secs(5);
@@ -386,31 +423,31 @@ async fn run(mut shutdown: Option<oneshot::Receiver<()>>) {
         println!("🔌 MQTT 客户端创建成功，开始连接...");
         
         // 订阅屏幕控制主题
+        log_info("正在订阅 MQTT 主题: pi5/display");
+        println!("📡 正在订阅 MQTT 主题: pi5/display");
+        
         match client.subscribe("pi5/display", QoS::AtMostOnce).await {
             Ok(_) => {
-                log_info("已成功订阅主题: pi5/display");
-                println!("✅ 已成功订阅主题: pi5/display");
-                println!("📡 等待控制指令...");
+                log_info("✅ 主题订阅成功: pi5/display");
+                println!("✅ 主题订阅成功: pi5/display");
                 
                 // 添加连接验证
-                log_info("验证连接状态...");
-                println!("🔍 验证连接状态...");
+                log_info("正在发送连接测试消息");
+                println!("🔍 正在发送连接测试消息");
                 match client.publish("test/connection", QoS::AtMostOnce, false, b"ping").await {
                     Ok(_) => {
-                        log_info("连接验证成功 - MQTT Broker 正在运行");
-                        println!("✅ 连接验证成功 - MQTT Broker 正在运行");
+                        log_info("✅ 连接测试成功 - MQTT Broker 运行正常");
+                        println!("✅ 连接测试成功 - MQTT Broker 运行正常");
+                        println!("📡 系统准备就绪，等待控制指令...");
                         retry_count = 0; // 重置重试计数
                     }
                     Err(e) => {
                         let error_msg = format!("连接验证失败: {}", e);
                         log_error(&error_msg);
-                        eprintln!("❌ {}", error_msg);
-                        eprintln!("⚠️  虽然订阅成功，但无法发送消息，可能 MQTT Broker 未正常运行");
                         retry_count += 1;
                         if retry_count >= MAX_RETRIES {
                             let error_msg = "达到最大重试次数，程序退出";
                             log_error(error_msg);
-                            eprintln!("❌ {}", error_msg);
                             break;
                         }
                         let retry_msg = format!("{} 秒后重试... ({}/{})", RETRY_DELAY.as_secs(), retry_count, MAX_RETRIES);
@@ -424,12 +461,10 @@ async fn run(mut shutdown: Option<oneshot::Receiver<()>>) {
             Err(e) => {
                 let error_msg = format!("MQTT 订阅失败: {}", e);
                 log_error(&error_msg);
-                eprintln!("❌ {}", error_msg);
                 retry_count += 1;
                 if retry_count >= MAX_RETRIES {
                     let error_msg = "达到最大重试次数，程序退出";
                     log_error(error_msg);
-                    eprintln!("❌ {}", error_msg);
                     break;
                 }
                 let retry_msg = format!("{} 秒后重试... ({}/{})", RETRY_DELAY.as_secs(), retry_count, MAX_RETRIES);
@@ -440,82 +475,56 @@ async fn run(mut shutdown: Option<oneshot::Receiver<()>>) {
             }
         }
 
-        // 根据是否有关闭信号选择不同的运行模式
-        if let Some(mut shutdown) = shutdown.take() {
-            // 服务模式：支持优雅关闭
-            loop {
-                tokio::select! {
-                    // 处理关闭信号
-                    _ = &mut shutdown => {
-                        log_info("收到关闭信号，正在停止服务...");
-                        println!("🛑 收到关闭信号，正在停止服务...");
-                        return;
-                    }
-                    // 处理 MQTT 事件，添加更短的超时
-                    ev = tokio::time::timeout(Duration::from_millis(500), eventloop.poll()) => match ev {
-                        Ok(Ok(Event::Incoming(Incoming::Publish(p)))) => {
-                            // 处理屏幕控制指令
-                            match p.payload.as_ref() {
-                                b"on" => {
-                                    log_info("收到开启屏幕指令");
-                                    println!("📺 收到开启屏幕指令");
-                                    screen::set_display(true);
-                                }
-                                b"off" => {
-                                    log_info("收到关闭屏幕指令");
-                                    println!("📺 收到关闭屏幕指令");
-                                    screen::set_display(false);
-                                }
-                                _ => {
-                                    let unknown_msg = format!("收到未知指令: {:?}", String::from_utf8_lossy(&p.payload));
-                                    log_warn(&unknown_msg);
-                                    println!("⚠️  {}", unknown_msg);
-                                }
+        // 服务模式：支持优雅关闭
+        loop {
+            tokio::select! {
+                // 处理关闭信号
+                _ = &mut shutdown => {
+                    log_info("收到关闭信号，正在停止服务...");
+                    println!("🛑 收到关闭信号，正在停止服务...");
+                    return;
+                }
+                // 处理 MQTT 事件，添加更短的超时
+                ev = tokio::time::timeout(Duration::from_millis(500), eventloop.poll()) => match ev {
+                    Ok(Ok(Event::Incoming(Incoming::Publish(p)))) => {
+                        // 处理屏幕控制指令
+                        let payload_str = String::from_utf8_lossy(&p.payload);
+                        let cmd_msg = format!("📨 收到控制指令: '{}'", payload_str);
+                        log_info(&cmd_msg);
+                        println!("{}", cmd_msg);
+                        
+                        match p.payload.as_ref() {
+                            b"on" => {
+                                log_info("执行操作: 开启屏幕");
+                                println!("📺 执行操作: 开启屏幕");
+                                screen::set_display(true);
+                                log_info("✅ 屏幕开启操作完成");
+                                println!("✅ 屏幕开启操作完成");
+                            }
+                            b"off" => {
+                                log_info("执行操作: 关闭屏幕");
+                                println!("📺 执行操作: 关闭屏幕");
+                                screen::set_display(false);
+                                log_info("✅ 屏幕关闭操作完成");
+                                println!("✅ 屏幕关闭操作完成");
+                            }
+                            _ => {
+                                let unknown_msg = format!("❌ 收到未知指令: '{}'", payload_str);
+                                log_warn(&unknown_msg);
+                                println!("⚠️  {}", unknown_msg);
+                                println!("💡 支持的指令: 'on' (开启屏幕), 'off' (关闭屏幕)");
                             }
                         }
-                        Ok(Ok(_)) => {} // 忽略其他 MQTT 事件
-                        Ok(Err(e)) => {
-                            let error_msg = format!("MQTT 连接错误: {}", e);
-                            log_error(&error_msg);
-                            eprintln!("❌ {}", error_msg);
-                            eprintln!("🔄 尝试重新连接...");
-                            break; // 跳出内层循环，重新连接
-                        }
-                        Err(_) => {
-                            // 超时，继续循环以检查关闭信号
-                            continue;
-                        }
                     }
-                }
-            }
-        } else {
-            // CLI 模式：简单循环
-            loop {
-                match eventloop.poll().await {
-                    Ok(Event::Incoming(Incoming::Publish(p))) => match p.payload.as_ref() {
-                        b"on" => {
-                            log_info("收到开启屏幕指令");
-                            println!("📺 收到开启屏幕指令");
-                            screen::set_display(true);
-                        }
-                        b"off" => {
-                            log_info("收到关闭屏幕指令");
-                            println!("📺 收到关闭屏幕指令");
-                            screen::set_display(false);
-                        }
-                        _ => {
-                            let unknown_msg = format!("收到未知指令: {:?}", String::from_utf8_lossy(&p.payload));
-                            log_warn(&unknown_msg);
-                            println!("⚠️  {}", unknown_msg);
-                        }
-                    },
-                    Ok(_) => {} // 忽略其他 MQTT 事件
-                    Err(e) => {
+                    Ok(Ok(_)) => {} // 忽略其他 MQTT 事件
+                    Ok(Err(e)) => {
                         let error_msg = format!("MQTT 连接错误: {}", e);
                         log_error(&error_msg);
-                        eprintln!("❌ {}", error_msg);
-                        eprintln!("🔄 尝试重新连接...");
                         break; // 跳出内层循环，重新连接
+                    }
+                    Err(_) => {
+                        // 超时，继续循环以检查关闭信号
+                        continue;
                     }
                 }
             }
@@ -526,12 +535,6 @@ async fn run(mut shutdown: Option<oneshot::Receiver<()>>) {
         if retry_count >= MAX_RETRIES {
             let error_msg = format!("达到最大重试次数 ({}), 程序退出", MAX_RETRIES);
             log_error(&error_msg);
-            eprintln!("❌ {}", error_msg);
-            eprintln!("💡 请检查以下项目：");
-            eprintln!("   1. MQTT Broker (如 Mosquitto) 是否已启动");
-            eprintln!("   2. 端口 {} 是否可访问", cfg.broker_port);
-            eprintln!("   3. 防火墙是否阻止了连接");
-            eprintln!("   4. config.toml 中的 broker_ip 是否正确");
             break;
         }
         
@@ -547,21 +550,14 @@ async fn run(mut shutdown: Option<oneshot::Receiver<()>>) {
 /// # Returns
 /// 返回程序执行结果
 fn main() -> windows_service::Result<()> {
-    // 解析命令行参数
-    let args = Args::parse();
+    // 服务模式：启动 Windows 服务
+    println!("🚀 自动屏幕开关程序启动");
+    println!("🔧 运行模式: Windows 服务模式");
+    println!("📍 程序版本: {}", env!("CARGO_PKG_VERSION"));
+    println!("🔗 GitHub: https://github.com/your-repo/auto-screen-switch");
+    println!("📖 正在启动 Windows 服务...");
+    println!("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
     
-    if args.mode == "cli" {
-        // CLI 模式：直接运行 MQTT 监听逻辑
-        log_info("以 CLI 模式启动");
-        println!("🚀 以 CLI 模式启动...");
-        let rt = Runtime::new().unwrap();
-        rt.block_on(run(None));
-        Ok(())
-    } else {
-        // 服务模式：启动 Windows 服务
-        log_info("以服务模式启动");
-        println!("🚀 以服务模式启动...");
-        service_dispatcher::start(SERVICE_NAME, ffi_service_main)
-    }
+    service_dispatcher::start(SERVICE_NAME, ffi_service_main)
 }
 
