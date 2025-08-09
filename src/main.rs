@@ -5,7 +5,7 @@ use serde::Deserialize;
 use std::fs::{self, OpenOptions};
 use std::io::Write;
 use std::path::Path;
-use std::sync::Mutex;
+use std::sync::{mpsc as std_mpsc, Mutex};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tokio::sync::mpsc;
 use tray_icon::menu::{Menu, MenuEvent, MenuItem, PredefinedMenuItem};
@@ -183,8 +183,18 @@ enum MqttCommand {
     Stop,
 }
 
+/// MQTT 运行状态（从后台任务回传到主线程，用于同步托盘按钮状态）
+enum MqttStatus {
+    Started,
+    Stopped,
+    Error(String),
+}
+
 /// MQTT 监听和屏幕控制逻辑
-async fn run_mqtt_client(mut command_rx: mpsc::Receiver<MqttCommand>) {
+async fn run_mqtt_client(
+    mut command_rx: mpsc::Receiver<MqttCommand>,
+    status_tx: std_mpsc::Sender<MqttStatus>,
+) {
     log_info("MQTT 客户端启动");
     let mut retry_count = 0;
     const MAX_RETRIES: u32 = 5;
@@ -204,10 +214,12 @@ async fn run_mqtt_client(mut command_rx: mpsc::Receiver<MqttCommand>) {
                     }
                     Some(MqttCommand::Stop) => {
                         log_info("收到停止 MQTT 连接命令");
+                        let _ = status_tx.send(MqttStatus::Stopped);
                         break;
                     }
                     None => {
                         log_info("命令通道关闭，停止 MQTT 客户端");
+                        let _ = status_tx.send(MqttStatus::Stopped);
                         break;
                     }
                 }
@@ -227,10 +239,13 @@ async fn run_mqtt_client(mut command_rx: mpsc::Receiver<MqttCommand>) {
                         log_error(&msg);
                         // 配置不正确，停止运行状态，等待用户修复后再点“启动”
                         mqtt_running = false;
+                        let _ = status_tx.send(MqttStatus::Error(msg));
+                        let _ = status_tx.send(MqttStatus::Stopped);
                         return;
                     }
                 };
 
+                let _ = status_tx.send(MqttStatus::Started);
                 let connect_msg = format!("正在连接到 MQTT Broker: {}:{}", cfg.broker_ip, cfg.broker_port);
                 log_info(&connect_msg);
 
@@ -297,6 +312,8 @@ async fn run_mqtt_client(mut command_rx: mpsc::Receiver<MqttCommand>) {
                         if retry_count >= MAX_RETRIES {
                             log_error("达到最大重试次数");
                             mqtt_running = false;
+                            let _ = status_tx.send(MqttStatus::Error(error_msg));
+                            let _ = status_tx.send(MqttStatus::Stopped);
                         } else {
                             tokio::time::sleep(RETRY_DELAY).await;
                         }
@@ -354,14 +371,15 @@ fn main() {
 
     log_info("系统托盘创建成功");
 
-    // 创建 MQTT 命令通道
+    // 创建 MQTT 命令通道与状态通道
     let (command_tx, command_rx) = mpsc::channel(10);
+    let (status_tx, status_rx) = std_mpsc::channel::<MqttStatus>();
     
     // 启动 MQTT 客户端（创建 tokio 运行时）
     let runtime = tokio::runtime::Runtime::new().expect("无法创建Tokio运行时");
-    let mqtt_handle = runtime.spawn(run_mqtt_client(command_rx));
+    let mqtt_handle = runtime.spawn(run_mqtt_client(command_rx, status_tx.clone()));
     
-    // 默认启动 MQTT 连接
+    // 默认启动 MQTT 连接（状态变化由后台任务回传）
     let _ = command_tx.blocking_send(MqttCommand::Start);
 
     // 监听菜单事件
@@ -370,27 +388,14 @@ fn main() {
     event_loop.run(move |_event, _target| {
         _target.set_control_flow(ControlFlow::Wait);
 
+        // 处理托盘菜单事件
         if let Ok(event) = menu_channel.try_recv() {
             if event.id == start_item.id() {
                 log_info("用户点击: 启动 MQTT 连接");
-                // 点击时也检查配置是否可用
-                match load_config() {
-                    Ok(_) => {
-                        let _ = command_tx.blocking_send(MqttCommand::Start);
-                        start_item.set_enabled(false);
-                        stop_item.set_enabled(true);
-                    }
-                    Err(e) => {
-                        let msg = format!("启动 MQTT 连接失败（配置错误）：{}", e);
-                        log_error(&msg);
-                        // 保持按钮状态不变，提示用户修复配置
-                    }
-                }
+                let _ = command_tx.blocking_send(MqttCommand::Start);
             } else if event.id == stop_item.id() {
                 log_info("用户点击: 停止 MQTT 连接");
                 let _ = command_tx.blocking_send(MqttCommand::Stop);
-                start_item.set_enabled(true);
-                stop_item.set_enabled(false);
             } else if event.id == autostart_item.id() {
                 log_info("用户点击: 切换开机启动");
                 match autostart::toggle_autostart() {
@@ -410,6 +415,24 @@ fn main() {
             } else if event.id == quit_item.id() {
                 log_info("用户点击: 退出程序");
                 _target.exit();
+            }
+        }
+
+        // 处理 MQTT 状态更新，驱动按钮状态
+        while let Ok(status) = status_rx.try_recv() {
+            match status {
+                MqttStatus::Started => {
+                    start_item.set_enabled(false);
+                    stop_item.set_enabled(true);
+                }
+                MqttStatus::Stopped => {
+                    start_item.set_enabled(true);
+                    stop_item.set_enabled(false);
+                }
+                MqttStatus::Error(msg) => {
+                    let log_msg = format!("MQTT 状态错误: {}", msg);
+                    log_error(&log_msg);
+                }
             }
         }
     }).expect("事件循环运行失败");
