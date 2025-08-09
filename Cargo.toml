@@ -3,12 +3,20 @@ name = "auto_screen_switch"
 version = "0.1.0"
 edition = "2021"
 
+[[bin]]
+name = "auto_screen_switch"
+path = "src/main.rs"
+
 [dependencies]
-tokio = { version = "1", features = ["macros", "rt-multi-thread", "sync"] }
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "sync", "signal"] }
 rumqttc = "0.24"
 
 serde = { version = "1", features = ["derive"] }
 toml = "0.8"
 chrono = "0.4"
-windows = { version = "0.52", features = ["Win32_Foundation", "Win32_UI_WindowsAndMessaging"] }
-windows-service = "0.4"
+windows = { version = "0.52", features = ["Win32_Foundation", "Win32_System", "Win32_System_Registry", "Win32_UI_WindowsAndMessaging", "Win32_UI_Shell"] }
+tray-icon = "0.14"
+winit = "0.29"
+image = "0.24"
+single-instance = "0.3"
+
