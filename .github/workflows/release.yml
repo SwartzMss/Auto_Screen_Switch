@@ -12,25 +12,14 @@ jobs:
   build:
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
-      - name: Setup Rust
-        uses: dtolnay/rust-toolchain@stable
-      - name: Show toolchain versions
-        shell: pwsh
-        run: |
-          rustc -vV
-          cargo -vV
-      - name: Build release binary
-        shell: pwsh
-        run: |
-          cargo build --verbose --release *>&1 | Tee-Object -FilePath build.log
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-      - name: Upload build log (on failure)
-        if: failure()
-        uses: actions/upload-artifact@v4
+      - uses: actions/checkout@v3
+      - uses: actions-rs/toolchain@v1
         with:
-          name: build-log
-          path: build.log
+          toolchain: stable
+          profile: minimal
+          override: true
+      - name: Build release binary
+        run: cargo build --verbose --release
       - name: Package binary
         shell: pwsh
         run: |
@@ -40,7 +29,7 @@ jobs:
       - name: Upload Release
         uses: actions/upload-artifact@v4
         with:
-          name: AutoScreenSwitch
+          name: EasyProxy
           path: release.zip
           retention-days: 30
       - name: Get existing Release upload URL
@@ -67,7 +56,7 @@ jobs:
             Write-Host 'GITHUB_TOKEN is NOT defined.'
           }
       - name: Create Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v1
         if: startsWith(github.ref, 'refs/tags/')
         with:
           files: |

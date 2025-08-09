@@ -1,6 +1,6 @@
 use windows::Win32::Foundation::{LPARAM, WPARAM};
 use windows::Win32::UI::WindowsAndMessaging::{
-    SendMessageW, HWND_BROADCAST, SC_MONITORPOWER, WM_SYSCOMMAND,
+    SendMessageTimeoutW, HWND_BROADCAST, SC_MONITORPOWER, WM_SYSCOMMAND, SMTO_ABORTIFHUNG,
 };
 
 /// 控制显示器电源状态
@@ -20,16 +20,17 @@ pub fn set_display(on: bool) {
         // -1: 显示器开启
         // 2: 显示器关闭
         let state = if on { -1 } else { 2 };
-        
-        // 发送显示器电源控制消息到所有窗口
-        // HWND_BROADCAST: 广播到所有顶级窗口
-        // WM_SYSCOMMAND: 系统命令消息
-        // SC_MONITORPOWER: 显示器电源控制命令
-        let _result = SendMessageW(
+        // 使用 SendMessageTimeoutW 防止 HWND_BROADCAST 导致阻塞
+        // 设置较短的超时（例如 500ms），并在窗口挂起时中止
+        let mut _unused: usize = 0;
+        let _ = SendMessageTimeoutW(
             HWND_BROADCAST,
             WM_SYSCOMMAND,
             WPARAM(SC_MONITORPOWER as usize),
             LPARAM(state),
+            SMTO_ABORTIFHUNG,
+            500,
+            Some(&mut _unused as *mut usize),
         );
         
         // 操作结果已在调用方记录日志

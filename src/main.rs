@@ -11,6 +11,7 @@ use tokio::sync::mpsc;
 use tray_icon::menu::{Menu, MenuEvent, MenuItem, PredefinedMenuItem};
 use tray_icon::{Icon, TrayIconBuilder};
 use winit::event_loop::{ControlFlow, EventLoop};
+use single_instance::SingleInstance;
 
 mod screen;
 mod autostart;
@@ -245,8 +246,9 @@ async fn run_mqtt_client(
                     }
                     Some(MqttCommand::Stop) => {
                         log_info("收到停止 MQTT 连接命令");
+                        mqtt_running = false;
                         let _ = status_tx.send(MqttStatus::Stopped);
-                        break;
+                        // 不退出任务，继续等待下一次启动
                     }
                     None => {
                         log_info("命令通道关闭，停止 MQTT 客户端");
@@ -361,6 +363,13 @@ fn main() {
     if let Err(e) = init_logger() {
         eprintln!("无法初始化日志记录器: {}", e);
         std::process::exit(1);
+    }
+    
+    // 单实例（基于命名互斥量，跨会话 Global 范围）
+    let instance = SingleInstance::new("Global_AutoScreenSwitchMutex").expect("创建单实例句柄失败");
+    if !instance.is_single() {
+        log_warn("检测到已有实例在运行，当前进程将退出");
+        std::process::exit(0);
     }
     
     log_info("🚀 Auto Screen Switch 托盘程序启动");
