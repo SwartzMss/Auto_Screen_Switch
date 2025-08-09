@@ -3,7 +3,7 @@
 use rumqttc::{AsyncClient, Event, Incoming, MqttOptions, QoS};
 use serde::Deserialize;
 use std::fs::{self, OpenOptions};
-use std::io::Write;
+use std::io::{Write, ErrorKind};
 use std::path::Path;
 use std::sync::{mpsc as std_mpsc, Mutex};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
@@ -142,9 +142,40 @@ fn load_config() -> Result<Config, String> {
             content
         },
         Err(e) => {
-            let error_msg = format!("无法读取 config.toml 文件: {} (路径: {:?})", e, config_file);
-            log_error(&error_msg);
-            return Err(error_msg);
+            if e.kind() == ErrorKind::NotFound {
+                // 自动生成默认配置文件
+                let default_content = r#"# MQTT Broker 的 IP 地址
+broker_ip = "localhost"
+
+# MQTT Broker 的端口号（通常为 1883）
+broker_port = 1883
+
+# MQTT 用户名（可选，如果不需要认证请注释掉）
+# username = "your_username"
+
+# MQTT 密码（可选，如果不需要认证请注释掉）
+# password = "your_password"
+"#;
+                match fs::write(&config_file, default_content) {
+                    Ok(_) => {
+                        let msg = format!("未找到配置文件，已生成默认配置文件: {:?}", config_file);
+                        log_warn(&msg);
+                        return Err("已生成默认 config.toml，请修改后再启动 MQTT".to_string());
+                    }
+                    Err(write_err) => {
+                        let error_msg = format!(
+                            "未找到配置文件，尝试生成默认文件失败: {} (路径: {:?})",
+                            write_err, config_file
+                        );
+                        log_error(&error_msg);
+                        return Err(error_msg);
+                    }
+                }
+            } else {
+                let error_msg = format!("无法读取 config.toml 文件: {} (路径: {:?})", e, config_file);
+                log_error(&error_msg);
+                return Err(error_msg);
+            }
         }
     };
     
