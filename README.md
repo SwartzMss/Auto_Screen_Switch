@@ -55,20 +55,9 @@ Auto_Screen_Switch/
    notepad config.toml
    ```
 
-### 运行模式
+### 运行方式
 
-#### CLI 模式（调试推荐）
-
-用于开发和调试，可以直接观察程序输出：
-
-```powershell
-# 以 CLI 模式运行
-auto_screen_switch.exe --mode cli
-```
-
-#### 服务模式（生产环境）
-
-作为 Windows 服务在后台运行：
+程序作为 Windows 服务在后台运行：
 
 ```powershell
 # 以管理员权限运行安装脚本
