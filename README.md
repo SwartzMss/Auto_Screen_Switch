@@ -6,24 +6,24 @@
 
 - ✅ 订阅 Pi5 发布的 MQTT 主题（`pi5/display`）
 - ✅ 收到 `on` 指令时点亮屏幕，收到 `off` 指令时关闭屏幕
-- ✅ 采用 Rust 实现，可作为 Windows 后台服务运行
-- ✅ 支持 CLI 模式调试
+- ✅ 采用 Rust 实现，以系统托盘程序在后台运行
+- ✅ 支持开机自启（托盘菜单可开关）
 - ✅ 完善的错误处理和日志输出
 - ✅ 详细的日志文件记录
-- ✅ 优雅的服务启动和关闭
+- ✅ 单实例运行，优雅退出
 
 ## 项目结构
 
 ```
 Auto_Screen_Switch/
 ├── src/
-│   ├── main.rs          # 主程序入口，包含 MQTT 监听和服务管理
-│   └── screen.rs        # 屏幕控制模块，使用 Windows API
-├── config.toml.example  # 配置文件示例
-├── install.bat          # 服务安装脚本
-├── uninstall.bat        # 服务卸载脚本
+│   ├── main.rs          # 主程序入口，系统托盘 + MQTT 监听
+│   ├── autostart.rs     # 开机自启（注册表）
+│   ├── icon.rs          # 托盘图标生成
+│   └── screen.rs        # 屏幕控制模块（Windows API）
+├── config.toml          # 配置文件（如不存在将自动生成示例）
 ├── Cargo.toml           # Rust 项目配置
-└── README.md           # 项目说明文档
+└── README.md            # 项目说明文档
 ```
 
 ## 开发与运行
@@ -49,28 +49,25 @@ Auto_Screen_Switch/
 
 3. 配置 MQTT 连接：
    ```bash
-   # 复制配置文件示例
-   copy config.toml.example config.toml
-   # 编辑配置文件，设置你的 MQTT Broker 信息
+   # 编辑配置文件（首次运行若不存在会自动生成默认 config.toml）
    notepad config.toml
    ```
 
 ### 运行方式
 
-程序作为 Windows 服务在后台运行：
+作为系统托盘程序运行：
 
 ```powershell
-# 以管理员权限运行安装脚本
-install.bat
-
-# 或手动安装服务
-sc create AutoScreenSwitch binPath= "C:\path\to\auto_screen_switch.exe" start= auto
-sc start AutoScreenSwitch
+# 双击启动 auto_screen_switch.exe（或从命令行启动）
+# 启动后系统托盘会出现 “Auto Screen Switch” 图标
 ```
+
+- 首次运行若没有 `config.toml`，会在同目录自动生成默认配置；请按需修改后，在托盘菜单点击“启动 MQTT 连接”。
+- 如需随 Windows 开机自启，可在托盘菜单点击“启用开机启动”（再次点击可关闭）。
 
 ### 配置文件
 
-程序从 `config.toml` 读取 MQTT 连接信息：
+程序从同目录的 `config.toml` 读取 MQTT 连接信息（若不存在会在首次运行时自动生成默认文件）：
 
 ```toml
 # MQTT Broker 的 IP 地址
@@ -115,37 +112,12 @@ mosquitto_pub -h 192.168.1.100 -t pi5/display -m off
 已发送关闭屏幕指令
 ```
 
-## 服务管理
+## 系统托盘与开机自启
 
-### 安装服务
-
-```powershell
-# 以管理员权限运行
-install.bat
-```
-
-### 卸载服务
-
-```powershell
-# 以管理员权限运行
-uninstall.bat
-```
-
-### 手动管理服务
-
-```powershell
-# 查看服务状态
-sc query AutoScreenSwitch
-
-# 启动服务
-sc start AutoScreenSwitch
-
-# 停止服务
-sc stop AutoScreenSwitch
-
-# 删除服务
-sc delete AutoScreenSwitch
-```
+- 启动 MQTT 连接：通过托盘菜单“启动 MQTT 连接”
+- 停止 MQTT 连接：通过托盘菜单“停止 MQTT 连接”
+- 开机自启：通过托盘菜单“启用/禁用开机启动”
+- 退出程序：通过托盘菜单“退出”
 
 ## 故障排除
 
@@ -160,10 +132,10 @@ sc delete AutoScreenSwitch
    - 检查网络连接
    - 验证用户名和密码（如果启用认证）
 
-3. **服务启动失败**
-   - 确保以管理员权限运行安装脚本
-   - 检查可执行文件路径是否正确
-   - 查看 Windows 事件日志获取详细错误信息
+3. **程序未正常启动或托盘未显示**
+   - 检查是否已存在正在运行的实例（本程序为单实例）
+   - 检查是否被安全软件拦截或最小化到托盘
+   - 查看日志文件定位原因
 
 4. **屏幕控制无效**
    - 确认程序以管理员权限运行
@@ -184,35 +156,30 @@ sc delete AutoScreenSwitch
    tail -n 20 auto_screen_switch.log
    ```
 
-2. **检查服务状态**：
-   ```cmd
-   sc query AutoScreenSwitch
-   ```
-
-3. **查看服务日志**：
-   - 打开 Windows 事件查看器
-   - 查看应用程序日志
-   - 或直接查看 auto_screen_switch.log 文件
+2. **检查 MQTT 是否已启动**：
+   - 托盘菜单中“启动 MQTT 连接”按钮是否被禁用（被禁用表示已启动）
+   - 确认 `config.toml` 中的 Broker 地址与端口可达
 
 ## 代码说明
 
 ### 主要模块
 
-- **`main.rs`**：程序主入口，包含 MQTT 客户端、服务管理和事件循环
+- **`main.rs`**：程序主入口，系统托盘、事件循环与 MQTT 客户端
+- **`autostart.rs`**：开机自启开关（Windows 注册表）
+- **`icon.rs`**：系统托盘图标生成
 - **`screen.rs`**：屏幕控制模块，使用 Windows API 发送显示器电源控制消息
 
 ### 关键功能
 
 1. **MQTT 监听**：订阅 `pi5/display` 主题，处理 `on`/`off` 指令
 2. **屏幕控制**：通过 `SendMessageW` API 广播显示器电源控制消息
-3. **服务管理**：支持作为 Windows 服务运行，支持优雅关闭
+3. **系统托盘与自启**：托盘菜单控制 MQTT 启停，可切换开机自启
 4. **错误处理**：完善的错误检查和日志输出
 
 ### 安全考虑
 
 - 程序使用 Windows API 控制显示器，需要适当的权限
 - MQTT 连接支持用户名/密码认证
-- 服务模式运行提供更好的安全性和稳定性
 
 ## 贡献指南
 
