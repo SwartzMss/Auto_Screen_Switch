@@ -4,7 +4,7 @@
 
 ## 功能特性
 
-- ✅ 订阅 Pi5 发布的 MQTT 主题（`pi5/display`）
+- ✅ 订阅 Pi5 发布的 MQTT 主题（`actuator/autoScreenSwitch`）
 - ✅ 收到 `on` 指令时点亮屏幕，收到 `off` 指令时关闭屏幕
 - ✅ 采用 Rust 实现，以系统托盘程序在后台运行
 - ✅ 支持开机自启（托盘菜单可开关）
@@ -91,11 +91,11 @@ password = "your_password"
 2. 使用 `mosquitto_pub` 发送测试消息：
 
 ```powershell
-# 开启屏幕
-mosquitto_pub -h 192.168.1.100 -t pi5/display -m on
+# 开启屏幕（有人检测）
+mosquitto_pub -h 192.168.1.100 -t actuator/autoScreenSwitch -m '{"action":"on","params":{"source":"pir_motion"}}'
 
-# 关闭屏幕
-mosquitto_pub -h 192.168.1.100 -t pi5/display -m off
+# 关闭屏幕（超时无人）
+mosquitto_pub -h 192.168.1.100 -t actuator/autoScreenSwitch -m '{"action":"off","params":{"source":"idle_timeout"}}'
 ```
 
 ### 观察程序输出
@@ -171,7 +171,7 @@ mosquitto_pub -h 192.168.1.100 -t pi5/display -m off
 
 ### 关键功能
 
-1. **MQTT 监听**：订阅 `pi5/display` 主题，处理 `on`/`off` 指令
+1. **MQTT 监听**：订阅 `actuator/autoScreenSwitch` 主题，处理 JSON 格式的 `on`/`off` 指令
 2. **屏幕控制**：通过 `SendMessageW` API 广播显示器电源控制消息
 3. **系统托盘与自启**：托盘菜单控制 MQTT 启停，可切换开机自启
 4. **错误处理**：完善的错误检查和日志输出

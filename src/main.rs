@@ -2,6 +2,7 @@
 
 use rumqttc::{AsyncClient, Event, Incoming, MqttOptions, QoS};
 use serde::Deserialize;
+use serde_json::Value;
 use std::fs::{self, OpenOptions};
 use std::io::{Write, ErrorKind};
 use std::path::Path;
@@ -28,6 +29,13 @@ struct Config {
     username: Option<String>,
     /// MQTT 密码（可选）
     password: Option<String>,
+}
+
+/// MQTT 消息结构体，适配新的 JSON 格式
+#[derive(Debug, Deserialize)]
+struct MqttMessage {
+    action: String,
+    params: Option<Value>,
 }
 
 /// 日志记录器结构体
@@ -294,9 +302,9 @@ async fn run_mqtt_client(
 
                 let (client, mut eventloop) = AsyncClient::new(options, 10);
                 
-                match client.subscribe("pi5/display", QoS::AtMostOnce).await {
+                match client.subscribe("actuator/autoScreenSwitch", QoS::AtMostOnce).await {
                     Ok(_) => {
-                        log_info("✅ 主题订阅成功: pi5/display");
+                        log_info("✅ 主题订阅成功: actuator/autoScreenSwitch");
                         retry_count = 0;
                         
                         loop {
@@ -311,20 +319,39 @@ async fn run_mqtt_client(
                                     let cmd_msg = format!("📨 收到控制指令: '{}'", payload_str);
                                     log_info(&cmd_msg);
                                     
-                                    match p.payload.as_ref() {
-                                        b"on" => {
-                                            log_info("执行操作: 开启屏幕");
-                                            screen::set_display(true);
-                                            log_info("✅ 屏幕开启操作完成");
+                                    // 解析 JSON 消息
+                                    match serde_json::from_slice::<MqttMessage>(&p.payload) {
+                                        Ok(msg) => {
+                                            let source = if let Some(params) = &msg.params {
+                                                params.get("source")
+                                                    .and_then(|s| s.as_str())
+                                                    .unwrap_or("unknown")
+                                            } else {
+                                                "unknown"
+                                            };
+                                            
+                                            match msg.action.as_str() {
+                                                "on" => {
+                                                    let log_msg = format!("执行操作: 开启屏幕 (来源: {})", source);
+                                                    log_info(&log_msg);
+                                                    screen::set_display(true);
+                                                    log_info("✅ 屏幕开启操作完成");
+                                                }
+                                                "off" => {
+                                                    let log_msg = format!("执行操作: 关闭屏幕 (来源: {})", source);
+                                                    log_info(&log_msg);
+                                                    screen::set_display(false);
+                                                    log_info("✅ 屏幕关闭操作完成");
+                                                }
+                                                _ => {
+                                                    let unknown_msg = format!("❌ 收到未知指令: '{}' (来源: {})", msg.action, source);
+                                                    log_warn(&unknown_msg);
+                                                }
+                                            }
                                         }
-                                        b"off" => {
-                                            log_info("执行操作: 关闭屏幕");
-                                            screen::set_display(false);
-                                            log_info("✅ 屏幕关闭操作完成");
-                                        }
-                                        _ => {
-                                            let unknown_msg = format!("❌ 收到未知指令: '{}'", payload_str);
-                                            log_warn(&unknown_msg);
+                                        Err(e) => {
+                                            let error_msg = format!("❌ JSON 解析失败: {} (原始消息: '{}')", e, payload_str);
+                                            log_error(&error_msg);
                                         }
                                     }
                                 }
