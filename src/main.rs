@@ -7,7 +7,7 @@ use std::fs::{self, OpenOptions};
 use std::io::{Write, ErrorKind};
 use std::path::Path;
 use std::sync::{mpsc as std_mpsc, Mutex};
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::{Duration, SystemTime, UNIX_EPOCH, Instant};
 use tokio::sync::mpsc;
 use tray_icon::menu::{Menu, MenuEvent, MenuItem, PredefinedMenuItem};
 use tray_icon::{Icon, TrayIconBuilder};
@@ -36,6 +36,88 @@ struct Config {
 struct MqttMessage {
     action: String,
     params: Option<Value>,
+}
+
+/// 连接状态枚举
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum ConnectionState {
+    Disconnected,
+    Connecting,
+    Connected,
+    Reconnecting,
+}
+
+/// 连接统计信息
+#[derive(Debug, Clone)]
+struct ConnectionStats {
+    total_connections: u32,
+    successful_connections: u32,
+    failed_connections: u32,
+    last_connection_time: Option<Instant>,
+    last_disconnection_time: Option<Instant>,
+    total_uptime: Duration,
+    current_uptime: Option<Instant>,
+}
+
+impl ConnectionStats {
+    fn new() -> Self {
+        Self {
+            total_connections: 0,
+            successful_connections: 0,
+            failed_connections: 0,
+            last_connection_time: None,
+            last_disconnection_time: None,
+            total_uptime: Duration::ZERO,
+            current_uptime: None,
+        }
+    }
+
+    fn on_connection_start(&mut self) {
+        self.total_connections += 1;
+        self.last_connection_time = Some(Instant::now());
+        self.current_uptime = Some(Instant::now());
+    }
+
+    fn on_connection_success(&mut self) {
+        self.successful_connections += 1;
+        log_info(&format!("✅ MQTT 连接成功 (第 {} 次)", self.successful_connections));
+    }
+
+    fn on_connection_failure(&mut self) {
+        self.failed_connections += 1;
+        if let Some(start_time) = self.current_uptime {
+            let duration = start_time.elapsed();
+            log_warn(&format!("❌ MQTT 连接失败 (第 {} 次), 耗时: {:?}", self.failed_connections, duration));
+        }
+    }
+
+    fn on_disconnection(&mut self) {
+        if let Some(start_time) = self.current_uptime {
+            let duration = start_time.elapsed();
+            self.total_uptime += duration;
+            self.last_disconnection_time = Some(Instant::now());
+            self.current_uptime = None;
+            
+            if duration > Duration::from_secs(60) {
+                log_info(&format!("📊 连接断开，本次连接时长: {:?}", duration));
+            } else {
+                log_warn(&format!("⚠️ 连接异常断开，本次连接时长: {:?}", duration));
+            }
+        }
+    }
+
+    fn get_uptime_stats(&self) -> String {
+        let total_hours = self.total_uptime.as_secs() / 3600;
+        let total_minutes = (self.total_uptime.as_secs() % 3600) / 60;
+        let success_rate = if self.total_connections > 0 {
+            (self.successful_connections as f64 / self.total_connections as f64) * 100.0
+        } else {
+            0.0
+        };
+        
+        format!("总连接次数: {}, 成功率: {:.1}%, 总运行时间: {}小时{}分钟", 
+                self.total_connections, success_rate, total_hours, total_minutes)
+    }
 }
 
 /// 日志记录器结构体
@@ -237,9 +319,17 @@ async fn run_mqtt_client(
 ) {
     log_info("MQTT 客户端启动");
     let mut retry_count = 0;
-    const MAX_RETRIES: u32 = 5;
-    const RETRY_DELAY: Duration = Duration::from_secs(5);
+    const MAX_RETRIES: u32 = 10; // 增加最大重试次数
+    const INITIAL_RETRY_DELAY: Duration = Duration::from_secs(1);
+    const MAX_RETRY_DELAY: Duration = Duration::from_secs(60);
+    let mut current_retry_delay = INITIAL_RETRY_DELAY;
     let mut mqtt_running = false;
+    
+    // 连接状态和统计信息
+    let mut connection_state = ConnectionState::Disconnected;
+    let mut connection_stats = ConnectionStats::new();
+    let mut last_heartbeat = Instant::now();
+    let heartbeat_interval = Duration::from_secs(30); // 30秒心跳间隔
 
     loop {
         tokio::select! {
@@ -250,13 +340,19 @@ async fn run_mqtt_client(
                         if !mqtt_running {
                             log_info("收到启动 MQTT 连接命令");
                             mqtt_running = true;
+                            connection_state = ConnectionState::Connecting;
+                            retry_count = 0;
+                            current_retry_delay = INITIAL_RETRY_DELAY;
                         }
                     }
                     Some(MqttCommand::Stop) => {
                         log_info("收到停止 MQTT 连接命令");
                         mqtt_running = false;
+                        connection_state = ConnectionState::Disconnected;
+                        if let ConnectionState::Connected = connection_state {
+                            connection_stats.on_disconnection();
+                        }
                         let _ = status_tx.send(MqttStatus::Stopped);
-                        // 不退出任务，继续等待下一次启动
                     }
                     None => {
                         log_info("命令通道关闭，停止 MQTT 客户端");
@@ -272,13 +368,21 @@ async fn run_mqtt_client(
                     return;
                 }
 
+                // 检查心跳
+                if let ConnectionState::Connected = connection_state {
+                    if last_heartbeat.elapsed() >= heartbeat_interval {
+                        last_heartbeat = Instant::now();
+                        log_info("💓 MQTT 连接心跳正常");
+                    }
+                }
+
                 // 每次启动连接前重新加载配置
                 let cfg = match load_config() {
                     Ok(cfg) => cfg,
                     Err(e) => {
                         let msg = format!("启动 MQTT 连接失败（配置错误）：{}", e);
                         log_error(&msg);
-                        // 配置不正确，停止运行状态，等待用户修复后再点“启动”
+                        connection_state = ConnectionState::Disconnected;
                         mqtt_running = false;
                         let _ = status_tx.send(MqttStatus::Error(msg));
                         let _ = status_tx.send(MqttStatus::Stopped);
@@ -286,12 +390,17 @@ async fn run_mqtt_client(
                     }
                 };
 
-                let _ = status_tx.send(MqttStatus::Started);
-                let connect_msg = format!("正在连接到 MQTT Broker: {}:{}", cfg.broker_ip, cfg.broker_port);
-                log_info(&connect_msg);
+                if connection_state == ConnectionState::Connecting {
+                    connection_stats.on_connection_start();
+                    let _ = status_tx.send(MqttStatus::Started);
+                    let connect_msg = format!("正在连接到 MQTT Broker: {}:{}", cfg.broker_ip, cfg.broker_port);
+                    log_info(&connect_msg);
+                }
 
                 let mut options = MqttOptions::new("auto_screen_switch", cfg.broker_ip.clone(), cfg.broker_port);
-                options.set_keep_alive(Duration::from_secs(30));
+                options.set_keep_alive(Duration::from_secs(60)); // 增加保活时间
+                options.set_clean_session(true);
+                options.set_max_packet_size(100 * 1024, 100 * 1024); // 100KB 最大包大小
                 
                 if let (Some(u), Some(p)) = (cfg.username.clone(), cfg.password.clone()) {
                     options.set_credentials(u, p);
@@ -305,11 +414,17 @@ async fn run_mqtt_client(
                 match client.subscribe("actuator/autoScreenSwitch", QoS::AtMostOnce).await {
                     Ok(_) => {
                         log_info("✅ 主题订阅成功: actuator/autoScreenSwitch");
+                        connection_state = ConnectionState::Connected;
+                        connection_stats.on_connection_success();
                         retry_count = 0;
+                        current_retry_delay = INITIAL_RETRY_DELAY;
+                        last_heartbeat = Instant::now();
                         
                         loop {
                             if !mqtt_running {
                                 log_info("停止 MQTT 监听");
+                                connection_state = ConnectionState::Disconnected;
+                                connection_stats.on_disconnection();
                                 break;
                             }
 
@@ -355,10 +470,18 @@ async fn run_mqtt_client(
                                         }
                                     }
                                 }
+                                Ok(Ok(Event::Incoming(Incoming::Disconnect))) => {
+                                    log_warn("⚠️ MQTT Broker 主动断开连接");
+                                    connection_state = ConnectionState::Disconnected;
+                                    connection_stats.on_disconnection();
+                                    break;
+                                }
                                 Ok(Ok(_)) => {} // 忽略其他 MQTT 事件
                                 Ok(Err(e)) => {
                                     let error_msg = format!("MQTT 连接错误: {}", e);
                                     log_error(&error_msg);
+                                    connection_state = ConnectionState::Disconnected;
+                                    connection_stats.on_disconnection();
                                     break;
                                 }
                                 Err(_) => {} // 超时，继续循环
@@ -368,14 +491,31 @@ async fn run_mqtt_client(
                     Err(e) => {
                         let error_msg = format!("MQTT 订阅失败: {}", e);
                         log_error(&error_msg);
+                        connection_state = ConnectionState::Disconnected;
+                        connection_stats.on_connection_failure();
+                        
                         retry_count += 1;
                         if retry_count >= MAX_RETRIES {
-                            log_error("达到最大重试次数");
+                            log_error(&format!("达到最大重试次数 ({}), 停止重连", MAX_RETRIES));
+                            log_info(&connection_stats.get_uptime_stats());
                             mqtt_running = false;
                             let _ = status_tx.send(MqttStatus::Error(error_msg));
                             let _ = status_tx.send(MqttStatus::Stopped);
                         } else {
-                            tokio::time::sleep(RETRY_DELAY).await;
+                            // 指数退避重连策略
+                            current_retry_delay = std::cmp::min(
+                                current_retry_delay * 2,
+                                MAX_RETRY_DELAY
+                            );
+                            
+                            let retry_msg = format!(
+                                "第 {} 次重连失败，等待 {:?} 后重试... (最大重试次数: {})",
+                                retry_count, current_retry_delay, MAX_RETRIES
+                            );
+                            log_warn(&retry_msg);
+                            
+                            connection_state = ConnectionState::Reconnecting;
+                            tokio::time::sleep(current_retry_delay).await;
                         }
                     }
                 }
