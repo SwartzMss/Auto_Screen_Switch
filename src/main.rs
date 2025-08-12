@@ -449,14 +449,24 @@ async fn run_mqtt_client(
                                                 "on" => {
                                                     let log_msg = format!("执行操作: 开启屏幕 (来源: {})", source);
                                                     log_info(&log_msg);
-                                                    screen::set_display(true);
-                                                    log_info("✅ 屏幕开启操作完成");
+                                                    
+                                                    // 使用智能屏幕控制，避免重复操作
+                                                    if screen::set_display_smart(true) {
+                                                        log_info("✅ 屏幕开启操作完成");
+                                                    } else {
+                                                        log_info("ℹ️ 屏幕已经处于开启状态，无需操作");
+                                                    }
                                                 }
                                                 "off" => {
                                                     let log_msg = format!("执行操作: 关闭屏幕 (来源: {})", source);
                                                     log_info(&log_msg);
-                                                    screen::set_display(false);
-                                                    log_info("✅ 屏幕关闭操作完成");
+                                                    
+                                                    // 使用智能屏幕控制，避免重复操作
+                                                    if screen::set_display_smart(false) {
+                                                        log_info("✅ 屏幕关闭操作完成");
+                                                    } else {
+                                                        log_info("ℹ️ 屏幕已经处于关闭状态，无需操作");
+                                                    }
                                                 }
                                                 _ => {
                                                     let unknown_msg = format!("❌ 收到未知指令: '{}' (来源: {})", msg.action, source);
